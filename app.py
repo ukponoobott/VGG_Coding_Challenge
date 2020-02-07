@@ -14,9 +14,10 @@ app.secret_key = os.urandom(24)
 if not os.path.exists(DATABASE):
 
     conn = sqlite3.connect(DATABASE)
-    conn.execute('CREATE TABLE users (user_id INTEGER PRIMARY KEY AUTOINCREMENT, username STRING, password STRING)')
-    conn.execute('CREATE TABLE projects (project_id INTEGER PRIMARY KEY AUTOINCREMENT, project_name STRING, '
-                 'description STRING')
+    conn.execute('CREATE TABLE users (user_id INTEGER PRIMARY KEY AUTOINCREMENT, username STRING NOT NULL UNIQUE, password STRING NOT NULL)')
+
+    conn.execute('CREATE TABLE projects (project_id INTEGER PRIMARY KEY AUTOINCREMENT, project_name STRING NOT NULL UNIQUE, '
+                 'description STRING NOT NULL, completed INTEGER')
     conn.execute('CREATE TABLE actions (actions_id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER,'
                  ' FOREIGN KEY(project_id) REFERENCES projects(projects_id)CONSTRAINT fk_projects '
                  'description STRING, note STRING')
@@ -48,7 +49,7 @@ def projects():
     if request.method == "GET":
         con = sqlite3.connect("database.db")
         cur = con.cursor()
-        cur.execute("select * from projects")
+        cur.execute("SELECT * from projects")
         rows = cur.fetchall()
         return jsonify(rows)
 
@@ -56,58 +57,80 @@ def projects():
         project_details = request.get_json()
         project_name = project_details["name"]
         description = project_details["description"]
+        completed = project_details["completed"]
 
         with sqlite3.connect("database.db") as con:
             cur = con.cursor()
-            cur.execute('INSERT INTO projects(project_name, description) VALUES (?, ?)', (project_name, description))
+            cur.execute('INSERT INTO projects(project_name, description, completed) VALUES (?, ?)', (project_name,
+                        description, completed))
             con.commit()
             response = "Success"
             return jsonify(response)
 
-    else:
-        pass
 
-
-@app.route("/api/projects/<int:projectId>", methods=["GET", "PATCH", "PUT", "DELETE"])
-def project(projectId):
+@app.route("/api/projects/<int:project_id>", methods=["GET", "PATCH", "PUT", "DELETE"])
+def project(project_id):
     if request.method == "GET":
-        if request.method == "GET":
-            con = sqlite3.connect("database.db")
-            cur = con.cursor()
-            cur.execute("SE * from projects")
-            rows = cur.fetchall()
-            return jsonify(rows)
+        con = sqlite3.connect("database.db")
+        cur = con.cursor()
+        cur.execute("SELECT * FROM projects where project_id = %s", project_id)
+        rows = cur.fetchone()
+        return jsonify(rows)
     elif request.method == "PATCH":
         pass
     elif request.method == "PUT":
         pass
     elif request.method == "DELETE":
-        pass
+        con = sqlite3.connect("database.db")
+        cur = con.cursor()
+        cur.execute("DELETE * FROM projects where project_id = %s", project_id)
 
 
-@app.route("/api/projects/<int:projectId>/actions", methods=["GET", "POST"])
-def project_actions(projectId):
+@app.route("/api/projects/<int:project_id>/actions", methods=["GET", "POST"])
+def project_actions(project_id):
     if request.method == "GET":
-        pass
+        con = sqlite3.connect("database.db")
+        cur = con.cursor()
+        cur.execute("SELECT * FROM actions where project_id = %s", project_id)
+        rows = cur.fetchall()
+        return jsonify(rows)
+
     elif request.method == "POST":
-        pass
-    else:
-        pass
+        action_data = request.get_json()
+        description = action_data["description"]
+        note = action_data["note"]
+        with sqlite3.connect("database.db") as con:
+            cur = con.cursor()
+            cur.execute('INSERT INTO actions(project_id, description, note) VALUES (?, ?, ?)', (project_id,
+                        description, note))
+            con.commit()
+            response = "Success"
+        return jsonify(response)
 
 
 @app.route("/api/actions")
 def all_actions():
-    pass
+    con = sqlite3.connect("database.db")
+    cur = con.cursor()
+    cur.execute("SELECT * FROM actions")
+    rows = cur.fetchall()
+    return jsonify(rows)
 
 
-@app.route("/api/projects/<int:projectId>/actions/<int:actionId>", methods=["GET", "PUT", "DELETE"])
-def project_actions_update(projectId, actionId):
+@app.route("/api/projects/<int:project_id>/actions/<int:action_id>", methods=["GET", "PUT", "DELETE"])
+def project_actions_update(project_id, action_id):
     if request.method == "GET":
-        pass
+        con = sqlite3.connect("database.db")
+        cur = con.cursor()
+        cur.execute("SELECT * FROM actions where project_id = %s AND action_id = %s", (project_id, action_id))
+        rows = cur.fetchone()
+        return jsonify(rows)
     elif request.method == "PUT":
         pass
     elif request.method == "DELETE":
-        pass
+        con = sqlite3.connect("database.db")
+        cur = con.cursor()
+        cur.execute("DELETE * FROM actions where project_id = %s AND action_id = %s", (project_id, action_id))
     else:
         pass
 
