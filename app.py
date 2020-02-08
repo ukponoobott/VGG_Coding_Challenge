@@ -84,6 +84,10 @@ def projects():
             response = "Success, New project added"
             return jsonify(response), 201
 
+@app.route("api/projects?limit=<int:limit>")
+def get_project_limit(limit):
+    pass
+
 
 @app.route("/api/projects/<int:project_id>", methods=["GET", "PATCH", "PUT", "DELETE"])
 def project(project_id):
