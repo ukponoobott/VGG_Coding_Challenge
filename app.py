@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, session
+from flask_bcrypt import generate_password_hash, check_password_hash
 import os
 import sqlite3
 
@@ -14,19 +15,15 @@ app.secret_key = os.urandom(24)
 if not os.path.exists(DATABASE):
 
     conn = sqlite3.connect(DATABASE)
-    conn.execute('CREATE TABLE users (user_id INTEGER PRIMARY KEY AUTOINCREMENT, username STRING NOT NULL UNIQUE, password STRING NOT NULL)')
-
-    conn.execute('CREATE TABLE projects (project_id INTEGER PRIMARY KEY AUTOINCREMENT, project_name STRING NOT NULL UNIQUE, description STRING NOT NULL, completed INTEGER')
-
-    conn.execute('CREATE TABLE actions (actions_id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER,'
-                 ' FOREIGN KEY(project_id) REFERENCES projects(projects_id)CONSTRAINT fk_projects '
-                 'description STRING, note STRING')
+    conn.execute('CREATE TABLE users (user_id INTEGER PRIMARY KEY '
+                 'AUTOINCREMENT, username STRING NOT NULL UNIQUE, password STRING NOT NULL)')
     conn.commit()
     conn.close()
 
 
-@app.route("/api/users/register", methods=["GET", "POST"])
+@app.route("/api/users/register", methods=["POST"])
 def register():
+    """Create a new user requesting user registration details"""
     reg_details = request.get_json()
     username = reg_details["username"]
     password = reg_details["password"]
@@ -36,12 +33,26 @@ def register():
         con.commit()
         response = "Success"
 
-    return response
+    return response, 201
 
 
-@app.route("/api/users/auth")
+@app.route("/api/users/auth", methods=["POST"])
 def auth():
-    pass
+    login_details = request.get_json()
+    username = login_details["username"]
+    password = login_details["password"]
+    con = sqlite3.connect("database.db")
+    cur = con.cursor()
+    cur.execute("SELECT * FROM users where username = ? AND password = ?", (username, password))
+    account = cur.fetchone()
+    a = dict([("user_id", account[0]), ("username", account[1]), ("password", account[2])])
+    session["username"] = a["username"]
+    if account:
+        return jsonify(a)
+    # session["username"] =
+    else:
+        response = "Invalid Username/Password"
+        return jsonify(response)
 
 
 @app.route("/api/projects", methods=["GET", "POST"])
@@ -51,7 +62,7 @@ def projects():
         cur = con.cursor()
         cur.execute("SELECT * from projects")
         rows = cur.fetchall()
-        return jsonify(rows)
+        return jsonify(rows), 200
 
     elif request.method == "POST":
         con = sqlite3.connect(DATABASE)
@@ -70,8 +81,8 @@ def projects():
             cur.execute('INSERT INTO projects(project_name, description, completed) VALUES (?, ?, ?)', (project_name,
                         description, completed))
             con.commit()
-            response = "Success"
-            return jsonify(response)
+            response = "Success, New project added"
+            return jsonify(response), 201
 
 
 @app.route("/api/projects/<int:project_id>", methods=["GET", "PATCH", "PUT", "DELETE"])
@@ -82,8 +93,16 @@ def project(project_id):
         cur.execute("SELECT * FROM projects where project_id = {}".format(project_id))
         rows = cur.fetchone()
         return jsonify(rows)
+
     elif request.method == "PATCH":
-        pass
+        completed = request.get_json("completed")
+        con = sqlite3.connect("database.db")
+        cur = con.cursor()
+        cur.execute("UPDATE projects SET completed = ? "
+                    "where project_id = ?", (completed, project_id))
+        con.commit()
+        response = "Updated project status (Completed)"
+        return jsonify(response)
 
     elif request.method == "PUT":
         update_project = request.get_json()
@@ -95,7 +114,7 @@ def project(project_id):
         cur.execute("UPDATE projects SET project_name = ?, description = ?, completed = ? "
                     "where project_id = ?", (project_name, description, completed, project_id))
         con.commit()
-        response = "Updated"
+        response = "Updated project"
         return jsonify(response)
 
     elif request.method == "DELETE":
@@ -103,7 +122,7 @@ def project(project_id):
         cur = con.cursor()
         cur.execute("DELETE FROM projects where project_id = {}".format(project_id))
         con.commit()
-        response = "DELETED"
+        response = "Project Deleted"
         return jsonify(response)
 
 
@@ -112,14 +131,15 @@ def project_actions(project_id):
     if request.method == "GET":
         con = sqlite3.connect("database.db")
         cur = con.cursor()
-        cur.execute("SELECT * FROM actions where project_id = %s", project_id)
+        cur.execute("SELECT * FROM actions where project_id =  {}".format(project_id))
         rows = cur.fetchall()
         return jsonify(rows)
 
     elif request.method == "POST":
         con = sqlite3.connect(DATABASE)
-        # con.execute("CREATE TABLE IF NOT EXISTS actions (actions_id INTEGER PRIMARY KEY AUTOINCREMENT, description STRING, note STRING, project_id INTEGER, FOREIGN KEY(project_id) REFERENCES projects(project_id)CONSTRAINT fk_projects")
-        con.execute("CREATE TABLE IF NOT EXISTS actions (actions_id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER,FOREIGN KEY(project_id) REFERENCES projects(projects_id)CONSTRAINT fk_projects description STRING, note STRING")
+        con.execute("CREATE TABLE IF NOT EXISTS actions (actions_id INTEGER PRIMARY "
+                    "KEY AUTOINCREMENT, description STRING, note STRING, project_id INTEGER, "
+                    "FOREIGN KEY(project_id) REFERENCES projects(project_id))")
         con.commit()
         con.close()
 
@@ -144,24 +164,34 @@ def all_actions():
     return jsonify(rows)
 
 
-@app.route("/api/projects/<int:project_id>/actions/<int:action_id>", methods=["GET", "PUT", "DELETE"])
-def project_actions_update(project_id, action_id):
+@app.route("/api/projects/<int:project_id>/actions/<int:actions_id>", methods=["GET", "PUT", "DELETE"])
+def project_actions_update(project_id, actions_id):
     if request.method == "GET":
         con = sqlite3.connect("database.db")
         cur = con.cursor()
-        cur.execute("SELECT * FROM actions where project_id = {} AND action_id = {}".format(project_id, action_id))
+        cur.execute("SELECT * FROM actions where project_id = {} AND actions_id = {}".format(project_id, actions_id))
         rows = cur.fetchone()
-        return jsonify(rows)
+        return jsonify(rows), 200
 
     elif request.method == "PUT":
-        pass
+        update_actions = request.get_json()
+        description = update_actions["description"]
+        note = update_actions["note"]
+        con = sqlite3.connect("database.db")
+        cur = con.cursor()
+        cur.execute("UPDATE projects SET description = ?, note = ?,"
+                    "where project_id = ? AND actions_id = ?", (description, note, project_id, actions_id))
+        con.commit()
+        response = "Updated action for project"
+        return jsonify(response)
+
     elif request.method == "DELETE":
         con = sqlite3.connect("database.db")
         cur = con.cursor()
-        cur.execute("DELETE * FROM actions where project_id = {} AND action_id = {}".format(project_id, action_id))
+        cur.execute("DELETE FROM actions where project_id = {} AND actions_id = {}".format(project_id, actions_id))
         con.commit()
-    else:
-        pass
+        response = "Deleted action from project"
+        return jsonify(response)
 
 
 if __name__ == "__main__":
