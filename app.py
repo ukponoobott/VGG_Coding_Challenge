@@ -21,6 +21,12 @@ if not os.path.exists(DATABASE):
     conn.close()
 
 
+@app.route("/")
+def index():
+    response = "Welcome"
+    return jsonify(response)
+
+
 @app.route("/api/users/register", methods=["POST"])
 def register():
     """Create a new user requesting user registration details"""
